@@ -1,10 +1,10 @@
-## Welcome to GitHub Pages
+# Arduscopio
 
-You can use the [editor on GitHub](https://github.com/alemazzeo/arduscope/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
+Arduscopio es una interfaz Arduino-Python desarrollada para la adquisición de datos analógicos. El comportamiento de la interfaz imita algunas características propias de un osciloscopio, tales como la funcionalidad de Trigger y el cambio de escala temporal.
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+Arduscopio surge como una iniciativa para facilitar la adquisición de datos en la materia Laboratorio 3 del Departamento de Física de la Facultad de Ciencias Exactas y Naturales de la UBA.
 
-### Markdown
+## Markdown
 
 Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
 
