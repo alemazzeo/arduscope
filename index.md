@@ -23,7 +23,7 @@ El paquete instala las siguientes dependencias en caso de no encontrarse present
 
 El código de Arduino puede ser descargado desde el repositorio del proyecto.
 
-[Click derecho en este link para guardar -> Guardar como](https://raw.githubusercontent.com/alemazzeo/arduscope/main/arduscope/arduscope.ino)
+[Click derecho en este link -> Guardar como](https://raw.githubusercontent.com/alemazzeo/arduscope/main/arduscope/arduscope.ino)
 
 Debe ser cargado en una Arduino UNO (excluyente).
 **Ninguna fracción del código fue pensada para ser compatible con otra placa.**
@@ -81,6 +81,61 @@ arduino.start_acquire()
 arduino.live_plot()
 ```
 
+A continuación podemos trabajar con los datos adquiridos.
+En primer lugar conviene asegurar que fueron adquiridas la cantidad de pantallas que necesitamos.
+Para eso podemos usar la función `wait_until(n_screens, timeout)`.
+
+Esta función detiene la ejecución principal hasta que el buffer de pantallas tenga `n_screens` almacenadas.
+También podemos pasarle un parámetro opcional de `timeout` para que se produzca un error por tiempo límite (en segundos).
+Si la cantidad de pantallas ya fue alcanzada al llamar esta función el resultado será inmediato.
+También podriamos detener la adquisición para que el buffer deje de sobreescribirse.
+
+```python
+arduino.wait_until(n_screens=50, timeout=None)
+```
+
+Podemos acceder al buffer mediante la propiedad `screens`. 
+Este buffer es un objeto de tipo `deque` pero a efectos de lectura podemos tratarlo como una lista común de Python.
+Cada elemento en el buffer es un objeto de tipo `ArduscopeScreen`, nuestro contenedor de resultados.
+Si queremos trabajar con la última pantalla podemos acceder a ella utilizando un índice negativo:
+
+```python
+screen = arduino.screens[-1]
+```
+
+Este objeto contiene todas las propiedades del Arduscopio al momento de la adquisición.
+Podemos consultar la frecuencia o el valor del trigger (por ejemplo).
+
+También tiene un vector `x` generado a partir de la frecuencia que corresponde al eje temporal.
+Los canales quedan almacenados en una lista dentro de la propiedad `channels`.
+
+Podriamos graficar del siguiente modo:
+
+```python
+fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+ax.plot(screen.x, screen.channels[0], label='a0')
+ax.plot(screen.x, screen.channels[1], label='a1')
+ax.set_title(f"Trigger: {screen.trigger_value}")
+plt.show()
+```
+
+Finalmente podríamos querer almacenar una medicin en un archivo.
+El objeto screen provee un metodo `save` para facilitar esta tarea.
+El formato se decide en base a la extensión del archivo creado:
+
+```python
+screen.save("data.csv")   # Formato CSV (separado por comas)
+screen.save("data.npz")   # Formato NPZ (array comprimido de Numpy)
+screen.save("data.json")  # Formato JSON (objeto de JavaScript)
+```
+
+Para recuperar una pantalla guardada vamos a crear un nuevo objeto `ArduscopeScreen` del siguiente modo:
+
+```python
+screen = ArduscopeScreen.load("data.csv")
+```
+
+
 ### Ejemplo completo
 
 ```python
@@ -98,4 +153,19 @@ arduino.trigger_offset = 0.0
 
 arduino.start_acquire()
 arduino.live_plot()
+
+arduino.wait_until(n_screens=50, timeout=None)
+
+screen = arduino.screens[-1]
+
+fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+ax.plot(screen.x, screen.channels[0], label='a0')
+ax.plot(screen.x, screen.channels[1], label='a1')
+ax.set_title(f"Trigger: {screen.trigger_value}")
+plt.show()
+
+screen.save("data.csv")   # Formato CSV (separado por comas)
+screen.save("data.npz")   # Formato NPZ (array comprimido de Numpy)
+screen.save("data.json")  # Formato JSON (objeto de JavaScript)
+
 ```
