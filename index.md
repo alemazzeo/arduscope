@@ -41,7 +41,9 @@ from arduscope import Arduscope, ArduscopeScreen
 ```
 
 Luego podemos crear una instancia del Arduscopio, indicando el puerto de conexión.
-Arduino IDE por ejemplo nos muestra el nombre del puerto en la esquina inferior derecha.
+
+Arduino IDE nos muestra el nombre del puerto en la esquina inferior derecha.
+
 En Windows los puertos suelen llamarse `"COM1"`, `"COM2"`, etc.
 En Linux el formato suele ser `"/dev/ttyUSB0"` o parecido.
 
@@ -53,6 +55,7 @@ El objeto que instanciamos bajo el nombre arduino (podría ser cualquier otro) t
 una serie de propiedades y métodos.
 
 La lógica general es que las propiedades se configuren primero y luego se active la adquisición.
+
 Si el usuario olvida detener la adquisición y cambia una propiedad la adquisición se detiene y reanuda automáticamente.
 
 ```python
@@ -73,6 +76,7 @@ Estos métodos no detienen la ejecución principal del programa.
 
 El método `live_plot()` abre un gráfico de Matplotlib y actualiza su contenido
 para cada nueva pantalla. Requiere que el modo ventana de Matplotlib se encuentre activo.
+
 Hasta que el gráfico no es cerrado la ejecución principal se detiene, generando un momento
 para que el usuario vea los datos en tiempo real y decida si quiere continuar con su script o detenerlo.
 
@@ -82,11 +86,13 @@ arduino.live_plot()
 ```
 
 A continuación podemos trabajar con los datos adquiridos.
+
 En primer lugar conviene asegurar que fueron adquiridas la cantidad de pantallas que necesitamos.
 Para eso podemos usar la función `wait_until(n_screens, timeout)`.
 
 Esta función detiene la ejecución principal hasta que el buffer de pantallas tenga `n_screens` almacenadas.
 También podemos pasarle un parámetro opcional de `timeout` para que se produzca un error por tiempo límite (en segundos).
+
 Si la cantidad de pantallas ya fue alcanzada al llamar esta función el resultado será inmediato.
 También podriamos detener la adquisición para que el buffer deje de sobreescribirse.
 
@@ -96,6 +102,7 @@ arduino.wait_until(n_screens=50, timeout=None)
 
 Podemos acceder al buffer mediante la propiedad `screens`. 
 Este buffer es un objeto de tipo `deque` pero a efectos de lectura podemos tratarlo como una lista común de Python.
+
 Cada elemento en el buffer es un objeto de tipo `ArduscopeScreen`, nuestro contenedor de resultados.
 Si queremos trabajar con la última pantalla podemos acceder a ella utilizando un índice negativo:
 
@@ -167,5 +174,7 @@ plt.show()
 screen.save("data.csv")   # Formato CSV (separado por comas)
 screen.save("data.npz")   # Formato NPZ (array comprimido de Numpy)
 screen.save("data.json")  # Formato JSON (objeto de JavaScript)
+
+# screen = ArduscopeScreen.load("data.csv")
 
 ```
