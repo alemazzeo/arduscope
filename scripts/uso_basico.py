@@ -1,17 +1,16 @@
 from arduscope import Arduscope, ArduscopeScreen
 
-arduino = Arduscope(port='/dev/ttyUSB0')
+with Arduscope(port='/dev/ttyUSB0') as arduino:
+    arduino.frequency = 2000
+    arduino.pulse_width = 0.05
+    arduino.trigger_value = 2.5
+    arduino.amplitude = 5.0
+    arduino.n_channels = 2
+    arduino.trigger_channel = "A0"
+    arduino.trigger_offset = 0.0
 
-arduino.frequency = 2000
-arduino.pulse_width = 0.05
-arduino.trigger_value = 2.5
-arduino.amplitude = 5.0
-arduino.n_channels = 2
-arduino.trigger_channel = "A0"
-arduino.trigger_offset = 0.0
-
-arduino.start_acquire()
-arduino.live_plot()
+    arduino.start_acquire()
+    arduino.live_plot()
 
 screen = arduino.last_screen
 x = screen.x

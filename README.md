@@ -41,6 +41,7 @@ from arduscope import Arduscope, ArduscopeScreen
 ```
 
 Luego podemos crear una instancia del Arduscopio, indicando el puerto de conexión.
+Nos conviene utilizar el contexto `with ... as` para no olvidarnos de cerrar el puerto. 
 
 Arduino IDE nos muestra el nombre del puerto en la esquina inferior derecha.
 
@@ -48,7 +49,7 @@ En Windows los puertos suelen llamarse `"COM1"`, `"COM2"`, etc.
 En Linux el formato suele ser `"/dev/ttyUSB0"` o parecido.
 
 ```python
-arduino = Arduscope(port='/dev/ttyUSB0')
+with Arduscope(port='/dev/ttyUSB0') as arduino:
 ```
 
 El objeto que instanciamos bajo el nombre arduino (podría ser cualquier otro) tiene
@@ -59,13 +60,13 @@ La lógica general es que las propiedades se configuren primero y luego se activ
 Si el usuario olvida detener la adquisición y cambia una propiedad la adquisición se detiene y reanuda automáticamente.
 
 ```python
-arduino.frequency = 2000        # Frecuencia de adquisición (en Hz)
-arduino.pulse_width = 0.05      # Ancho del pulso digital (en Segundos)
-arduino.trigger_value = 2.5     # Valor del trigger (en Volts)
-arduino.amplitude = 5.0         # Amplitud de la señal (en Volts)
-arduino.n_channels = 2          # Cantidad de canales (1 a 6)
-arduino.trigger_channel = "A0"  # Canal/Modo de trigger (ver apartado)
-arduino.trigger_offset = 0.0    # Offset del trigger (en fracción de pantalla)
+  arduino.frequency = 2000        # Frecuencia de adquisición (en Hz)
+  arduino.pulse_width = 0.05      # Ancho del pulso digital (en Segundos)
+  arduino.trigger_value = 2.5     # Valor del trigger (en Volts)
+  arduino.amplitude = 5.0         # Amplitud de la señal (en Volts)
+  arduino.n_channels = 2          # Cantidad de canales (1 a 6)
+  arduino.trigger_channel = "A0"  # Canal/Modo de trigger (ver apartado)
+  arduino.trigger_offset = 0.0    # Offset del trigger (en fracción de pantalla)
 ```
 
 Para comenzar la adquisición se utiliza el método `start_acquire()`.
@@ -81,8 +82,8 @@ Hasta que el gráfico no es cerrado la ejecución principal se detiene, generand
 para que el usuario vea los datos en tiempo real y decida si quiere continuar con su script o detenerlo.
 
 ```python
-arduino.start_acquire()
-arduino.live_plot()
+  arduino.start_acquire()
+  arduino.live_plot()
 ```
 
 A continuación podemos trabajar con los datos adquiridos.
@@ -97,7 +98,7 @@ Si la cantidad de pantallas ya fue alcanzada al llamar esta función el resultad
 También podriamos detener la adquisición para que el buffer deje de sobreescribirse.
 
 ```python
-arduino.wait_until(n_screens=50, timeout=None)
+  arduino.wait_until(n_screens=50, timeout=None)
 ```
 
 Podemos acceder al buffer mediante la propiedad `screens`.
@@ -146,22 +147,22 @@ screen = ArduscopeScreen.load("data.csv")
 ### Ejemplo completo
 
 ```python
+import matplotlib.pyplot as plt
 from arduscope import Arduscope, ArduscopeScreen
 
-arduino = Arduscope(port='/dev/ttyUSB0')
+with Arduscope(port='/dev/ttyUSB0') as arduino:
+    arduino.frequency = 2000
+    arduino.pulse_width = 0.05
+    arduino.trigger_value = 2.5
+    arduino.amplitude = 5.0
+    arduino.n_channels = 2
+    arduino.trigger_channel = "A0"
+    arduino.trigger_offset = 0.0
+    
+    arduino.start_acquire()
+    arduino.live_plot()
 
-arduino.frequency = 2000
-arduino.pulse_width = 0.05
-arduino.trigger_value = 2.5
-arduino.amplitude = 5.0
-arduino.n_channels = 2
-arduino.trigger_channel = "A0"
-arduino.trigger_offset = 0.0
-
-arduino.start_acquire()
-arduino.live_plot()
-
-arduino.wait_until(n_screens=50, timeout=None)
+    arduino.wait_until(n_screens=50, timeout=None)
 
 screen = arduino.screens[-1]
 

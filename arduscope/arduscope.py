@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import os
-import time
 import calendar
-import threading
+import inspect
 import json
-from functools import wraps
-from dataclasses import dataclass, field, asdict
-from collections import deque
-from typing import List, Callable
-
-import numpy as np
-import matplotlib.pyplot as plt
+import os
 import pathlib
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass, field, asdict
+from functools import wraps
+from typing import List, Callable, Dict
+
+import matplotlib.pyplot as plt
+import numpy as np
 from serial import Serial
 
 BUFFER = 480
@@ -162,6 +163,8 @@ class ArduscopeScreen:
 
 
 class Arduscope:
+    _open_ports: Dict[str, Arduscope] = {}
+
     def __init__(self, port: str, deque_max_size: int = 100):
         """
         Parameters
@@ -204,15 +207,6 @@ class Arduscope:
 
         self._on_new_screen_function = None
 
-        msg = ""
-        while msg != "BOOTED\r\n":
-            try:
-                msg = self._serial.readline().decode('utf-8')
-            except UnicodeDecodeError:
-                pass
-            if self.uptime > 5:
-                raise TimeoutError("Arduino is not responding")
-
         self.frequency = 200
         self.pulse_width = 0.1
         self.trigger_value = 2.5
@@ -222,6 +216,12 @@ class Arduscope:
         self.trigger_offset = 0.05
         self._trigger_tol = 5
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     def _open_serial(self) -> Serial:
         """
         Opens a serial port between Arduino and Python
@@ -230,7 +230,27 @@ class Arduscope:
         -------
         Serial (from PySerial library)
         """
-        return Serial(port=self._port, baudrate=self._baudrate, timeout=1)
+
+        if self._port in Arduscope._open_ports.keys():
+            other_arduscope = Arduscope._open_ports[self._port]
+            other_arduscope.stop_acquire()
+            other_arduscope._serial.close()
+
+        Arduscope._open_ports.update({
+            self._port: self
+        })
+
+        serial = Serial(port=self._port, baudrate=self._baudrate, timeout=1)
+        msg = ""
+        start_time = time.time()
+        while msg != "BOOTED\r\n":
+            try:
+                msg = serial.readline().decode('utf-8')
+            except UnicodeDecodeError:
+                pass
+            if time.time() - start_time > 5:
+                raise TimeoutError("Arduino is not responding")
+        return serial
 
     @property
     def uptime(self) -> float:
@@ -426,6 +446,7 @@ class Arduscope:
             A function that receives a ArduscopeScreen and performs some action.
             Used by live_plot to update the graph.
         """
+
         @wraps(function)
         def wrapper(screen):
             function(screen)
@@ -472,6 +493,10 @@ class Arduscope:
             if self._daemon.is_alive():
                 self._running.clear()
                 self._daemon.join()
+
+    def close(self):
+        self.stop_acquire()
+        self._serial.close()
 
     def _on_property_change(self):
         """ Handles the properties changes resetting acquisition"""
@@ -520,10 +545,39 @@ class Arduscope:
 
         return channels
 
+    def simple_plot(self):
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+
+        curves = [
+            ax.plot([], [], lw=2.0, label=f'Channel A{i}')[0]
+            for i in range(self.n_channels)
+        ]
+
+        for i, channel in enumerate(self.last_screen.channels):
+            curves[i].set_data(self.last_screen.x, channel)
+
+        ax.grid()
+        ax.set_xlim(0, max(self.x))
+        ax.set_ylim(0, self.amplitude)
+        ax.set_xlabel("Time (s)", fontsize=14)
+        ax.set_ylabel("Voltage (V)", fontsize=14)
+        ax.legend(loc=1, fontsize=14)
+
     def live_plot(self):
         """ Deploy a Matplotlib window with the live state of Arduscope """
         if not self._running.isSet():
             raise RuntimeError('First call "start_acquire()"')
+
+        backend = plt.get_backend()
+
+        if 'inline' in backend:
+            print(
+                f"Current backend of Matplotlib is {plt.get_backend()}\n"
+                f"Use `get_ipython().run_line_magic('matplotlib', 'qt5')` "
+                f"to change it for live plot"
+            )
+            self.simple_plot()
+            return
 
         fig, ax = plt.subplots(1, 1, figsize=(10, 6))
         curves = [
@@ -544,4 +598,8 @@ class Arduscope:
             plt.draw()
 
         self.on_new_screen(plot)
-        plt.show()
+
+        print('Live mode on...')
+        plt.show(block=True)
+        self._on_new_screen_function = None
+        print('Live mode off')
