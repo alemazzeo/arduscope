@@ -4,7 +4,7 @@ Arduscopio es una interfaz Arduino-Python desarrollada para la adquisición de d
 
 Arduscopio surge como una iniciativa para facilitar la adquisición de datos en la materia Laboratorio 3 del Departamento de Física de la Facultad de Ciencias Exactas y Naturales de la UBA.
 
-![Screenshot](https://github.com/alemazzeo/arduscope/blob/main/.images/arduscope_live.png)
+![Screenshot](https://raw.githubusercontent.com/alemazzeo/arduscope/main/.images/arduscope_live.png)
 
 
 ## Instalación
