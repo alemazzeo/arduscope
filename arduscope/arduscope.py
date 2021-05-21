@@ -579,7 +579,13 @@ class Arduscope:
             self.simple_plot()
             return
 
+        def on_close(event):
+            self._on_new_screen_function = None
+
+        fig: plt.Figure
+        ax: plt.Axes
         fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        fig.canvas.mpl_connect('close_event', on_close)
         curves = [
             ax.plot([], [], lw=2.0, label=f'Channel A{i}')[0]
             for i in range(self.n_channels)
