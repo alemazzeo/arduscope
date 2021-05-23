@@ -233,9 +233,13 @@ class Arduscope:
         """
 
         if self._port in Arduscope._open_ports.keys():
+            print(f"Closing other Arduscope instances in port {self._port}...")
             other_arduscope = Arduscope._open_ports[self._port]
-            other_arduscope.stop_acquire()
-            other_arduscope._serial.close()
+            try:
+                other_arduscope.stop_acquire()
+                other_arduscope._serial.close()
+            except AttributeError:
+                pass
 
         Arduscope._open_ports.update({
             self._port: self
