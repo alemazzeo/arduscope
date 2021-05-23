@@ -12,6 +12,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field, asdict
 from functools import wraps
+from tqdm import tqdm
 from typing import List, Callable, Dict
 
 import matplotlib.pyplot as plt
@@ -205,8 +206,6 @@ class Arduscope:
 
         self._uptime = time.time()
 
-        self._on_new_screen_function = None
-
         self.frequency = 200
         self.pulse_width = 0.1
         self.trigger_value = 2.5
@@ -215,6 +214,8 @@ class Arduscope:
         self.trigger_channel = "A0"
         self.trigger_offset = 0.05
         self._trigger_tol = 5
+
+        self._live_mode_on = False
 
     def __enter__(self):
         return self
@@ -479,14 +480,26 @@ class Arduscope:
                 raise TypeError("Timeout type: float")
 
         start = time.time()
-        while len(self._screen_buffer) < n_screens:
-            if timeout is not None:
-                if time.time() - start > timeout:
-                    raise TimeoutError()
+        current_screens = len(self._screen_buffer)
+        if current_screens < n_screens:
+            with tqdm(
+                total=n_screens,
+                miniters=1,
+                initial=current_screens,
+                ncols=80,
+                bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"
+            ) as pb:
+                pb.set_description("Waiting for requested screens")
+                while current_screens < n_screens:
+                    if timeout is not None:
+                        if time.time() - start > timeout:
+                            raise TimeoutError()
+                    pb.update(current_screens - pb.n)
+                    current_screens = len(self._screen_buffer)
+                pb.update(n_screens - pb.n)
 
     def stop_acquire(self):
         """ Stops acquire without clearing the buffer """
-        self._on_new_screen_function = None
         if self._running.isSet():
             self._running.clear()
         if self._daemon is not None:
@@ -523,8 +536,6 @@ class Arduscope:
                 )
                 self._screen_buffer.append(screen)
                 self._screen_ready.set()
-                if self._on_new_screen_function is not None:
-                    self._on_new_screen_function(self.last_screen)
 
     def _read_buffer(self) -> List[np.ndarray]:
         """ Private function for buffer reading and conversion """
@@ -572,40 +583,47 @@ class Arduscope:
 
         if 'inline' in backend:
             print(
-                f"Current backend of Matplotlib is {plt.get_backend()}\n"
-                f"Use `get_ipython().run_line_magic('matplotlib', 'qt5')` "
-                f"to change it for live plot"
+                f"\nCurrent backend of Matplotlib is {plt.get_backend()}"
+                f"\nLive mode not available for this backend"
             )
             self.simple_plot()
             return
 
         def on_close(event):
-            self._on_new_screen_function = None
+            self._live_mode_on = False
 
-        fig: plt.Figure
-        ax: plt.Axes
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-        fig.canvas.mpl_connect('close_event', on_close)
-        curves = [
-            ax.plot([], [], lw=2.0, label=f'Channel A{i}')[0]
-            for i in range(self.n_channels)
-        ]
+        with plt.ion():
+            self._live_mode_on = True
+            fig: plt.Figure
+            ax: plt.Axes
+            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+            fig.canvas.mpl_connect('close_event', on_close)
+            curves = [
+                ax.plot([], [], lw=2.0, label=f'Channel A{i}')[0]
+                for i in range(self.n_channels)
+            ]
 
-        ax.grid()
-        ax.set_xlim(0, max(self.x))
-        ax.set_ylim(0, self.amplitude)
-        ax.set_xlabel("Time (s)", fontsize=14)
-        ax.set_ylabel("Voltage (V)", fontsize=14)
-        ax.legend(loc=1, fontsize=14)
+            ax.grid()
+            ax.set_xlim(0, max(self.x))
+            ax.set_ylim(0, self.amplitude)
+            ax.set_xlabel("Time (s)", fontsize=14)
+            ax.set_ylabel("Voltage (V)", fontsize=14)
+            ax.legend(loc=1, fontsize=14)
 
-        def plot(screen: ArduscopeScreen):
-            for i, channel in enumerate(screen.channels):
-                curves[i].set_data(screen.x, channel)
-            plt.draw()
+            current_screens = len(self._screen_buffer)
 
-        self.on_new_screen(plot)
-
-        print('Live mode on...')
-        plt.show(block=True)
-        self._on_new_screen_function = None
-        print('Live mode off')
+            with tqdm(
+                total=self._screen_buffer.maxlen,
+                initial=current_screens,
+                ncols=80,
+                bar_format = "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"
+            ) as pb:
+                pb.set_description("Live mode on. Screen buffer status")
+                while self._live_mode_on is True:
+                    plt.pause(0.001)
+                    if self._screen_ready.isSet():
+                        for i, channel in enumerate(self.last_screen.channels):
+                            curves[i].set_data(self.last_screen.x, channel)
+                        self._screen_ready.clear()
+                    pb.update(current_screens - pb.n)
+                    current_screens = len(self._screen_buffer)
