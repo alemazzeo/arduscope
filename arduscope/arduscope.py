@@ -442,21 +442,8 @@ class Arduscope:
         self._daemon.start()
         self._screen_ready.wait()
 
-    def on_new_screen(self, function: Callable[[ArduscopeScreen], None]):
-        """ Event handler for new screen available
-
-        Parameters
-        ----------
-        function : Callable
-            A function that receives a ArduscopeScreen and performs some action.
-            Used by live_plot to update the graph.
-        """
-
-        @wraps(function)
-        def wrapper(screen):
-            function(screen)
-
-        self._on_new_screen_function = wrapper
+    def clear_buffer(self):
+        self._screen_buffer.clear()
 
     def wait_signal(self):
         """ Stops execution until screen buffer has at least one measurement"""
