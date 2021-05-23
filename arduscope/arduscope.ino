@@ -42,6 +42,8 @@
 
 #define PORTD_OUTPUT_PIN 7
 
+bool output_pin = false;
+
 int buffer_write = 0;
 int buffer_read = 0;
 int trigger_position = 0;
@@ -64,6 +66,7 @@ int trigger_tol = 5;
 
 bool trigger_min = false;
 bool triggered = false;
+int output_change = 0;
 
 int new_data = 0;
 
@@ -200,20 +203,6 @@ ISR(TIMER1_COMPA_vect) {
             buffer_write = (buffer_write + 1) % BUFFER_SIZE;
         }
 
-        if (!triggered &&
-            (
-              (trigger_channel == -1 && PORTD & (1 << PORTD_OUTPUT_PIN)) ||
-              (trigger_channel == -2 && !(PORTD & (1 << PORTD_OUTPUT_PIN)))
-            ) &&
-            new_data > trigger_offset
-           ) {
-            info_print("TRIGGER BY PIN7");
-            triggered = true;
-            trigger_position = (BUFFER_SIZE + buffer_write - trigger_offset * n_channels) % BUFFER_SIZE;
-            info_print_var("trigger_offset", trigger_offset);
-            buffer_read = trigger_offset;
-        }
-
         if (triggered) {
             buffer_read += 1;
         }
@@ -238,6 +227,16 @@ ISR(TIMER2_COMPA_vect) {
     if (timer_2_counter >= pulse_width){
         timer_2_counter = 0;
         PORTD ^= (1 << PORTD_OUTPUT_PIN);
+
+        if (!triggered && !data_ready && new_data >= trigger_offset){
+            bool condition1 = ((PORTD >> PORTD_OUTPUT_PIN) & 1) && trigger_channel == -1;
+            bool condition2 = !((PORTD >> PORTD_OUTPUT_PIN) & 1) && trigger_channel == -2;
+            if (condition1 || condition2){
+                triggered = true;
+                trigger_position = (BUFFER_SIZE + buffer_write - trigger_offset * n_channels) % BUFFER_SIZE;
+                buffer_read = trigger_offset;
+            }
+        }
     }
 }
 
