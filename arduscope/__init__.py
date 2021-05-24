@@ -1,1 +1,1 @@
-from arduscope.arduscope import Arduscope, ArduscopeScreen
+from arduscope.arduscope import Arduscope, ArduscopeMeasure

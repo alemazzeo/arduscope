@@ -39,7 +39,7 @@ ARDUINO_PARAMS = [
 
 
 @dataclass
-class ArduscopeScreen:
+class ArduscopeMeasure:
     acquire_time: float
     frequency: int
     pulse_width: float
@@ -51,6 +51,7 @@ class ArduscopeScreen:
 
     x: np.ndarray = field(init=False)
     channels: List[np.ndarray] = list
+    version: str = "0.1.2"
 
     def __post_init__(self):
         self.acquire_time = float(self.acquire_time)
@@ -86,13 +87,14 @@ class ArduscopeScreen:
 
         if filename.suffix == ".json":
             with open(filename, mode="w") as f:
-                as_dict["x"] = self.x.tolist()
+                as_dict.pop("x")
                 as_dict["channels"] = [
                     channel.tolist()
                     for channel in self.channels
                 ]
                 json.dump(as_dict, f)
         elif filename.suffix == ".npz":
+            as_dict.pop("x")
             np.savez(filename, **as_dict)
         elif filename.suffix == ".csv":
             as_dict["acquire_time"] = time.strftime(
@@ -100,17 +102,27 @@ class ArduscopeScreen:
                 time.gmtime(self.acquire_time)
             )
             header = "\n".join([
-                f"{key} = {value}"
+                f"# {key} = {value}"
                 for key, value in as_dict.items()
                 if key not in ["x", "channels"]
             ])
-            data = np.append([self.x], self.channels, axis=0).T
-            np.savetxt(filename, data, fmt="%.9e", header=header)
+            with open(filename, mode="w") as f:
+                f.write(header)
+                f.write("\n")
+                for i in range(self.channels[0].shape[0]):
+                    f.write(f"\n### Screen {i} of {self.channels[0].shape[0]}\n")
+                    screen = [
+                        channel[i, :]
+                        for channel in self.channels
+                    ]
+                    data = np.append([self.x], screen, axis=0).T
+                    np.savetxt(f, data, fmt="%.9e")
+                    f.write("### End of screen\n")
         else:
             raise ValueError
 
     @classmethod
-    def load(cls, file: [str, os.PathLike]) -> ArduscopeScreen:
+    def load(cls, file: [str, os.PathLike]) -> ArduscopeMeasure:
         """ Loads a screen from a file (csv, npz or json)
 
         Parameters
@@ -133,14 +145,13 @@ class ArduscopeScreen:
         if filename.suffix == ".json":
             with open(filename, mode="r") as f:
                 data = json.load(f)
-                data["x"] = np.array(data["x"])
                 data["channels"] = [
                     np.array(ch)
                     for ch in data["channels"]
                 ]
                 return cls(**data)
         elif filename.suffix == ".npz":
-            data = np.load(filename)
+            data = np.load(str(filename))
             return cls(**data)
         elif filename.suffix == ".csv":
             as_dict = {}
@@ -156,8 +167,12 @@ class ArduscopeScreen:
             as_dict["acquire_time"] = calendar.timegm(
                 time.strptime(as_dict["acquire_time"], "%d/%m/%Y %H:%M:%S")
             )
-            data = np.loadtxt(filename)
-            as_dict["channels"] = data[:, 1:]
+            data = np.loadtxt(str(filename))
+            n = data.shape[0] // (BUFFER // int(as_dict["n_channels"]))
+            as_dict["channels"] = [
+                np.asarray(np.array_split(data[:, i+1], n))
+                for i in range(int(as_dict["n_channels"]))
+            ]
             return cls(**as_dict)
         else:
             raise ValueError
@@ -198,7 +213,8 @@ class Arduscope:
         self._adc_prescaler = 4
         self._ref_values = {"5.0": 0, "1.1": 1}
 
-        self._screen_buffer = deque(maxlen=deque_max_size)
+        self._measure_params = None
+        self._data_buffer = deque(maxlen=deque_max_size)
 
         self._daemon = None
         self._running = threading.Event()
@@ -268,6 +284,13 @@ class Arduscope:
         return np.arange(BUFFER // self.n_channels) / self.frequency
 
     @property
+    def channels(self) -> List[np.ndarray]:
+        return [
+            np.asarray([channels[i] for channels in self._data_buffer])
+            for i in range(self._n_channels)
+        ]
+
+    @property
     def frequency(self) -> int:
         """ Frequency of sampling (in Hz) """
         return self._freq
@@ -287,10 +310,10 @@ class Arduscope:
 
     @pulse_width.setter
     def pulse_width(self, value: float):
-        if 0.001 <= value <= MAX_PULSE_WIDTH / 1000.0:
+        if 0.002 <= value <= MAX_PULSE_WIDTH / 1000.0:
             self._pulse_width = int(value * 1000)
         else:
-            raise ValueError(f"MIN: 0.001, MAX: {MAX_PULSE_WIDTH / 1000.0}")
+            raise ValueError(f"MIN: 0.002, MAX: {MAX_PULSE_WIDTH / 1000.0}")
         self._on_property_change()
 
     @property
@@ -395,17 +418,9 @@ class Arduscope:
             return 1024 / 1.1
 
     @property
-    def screens(self) -> deque:
-        """ Screen buffer (a deque object)"""
-        return self._screen_buffer
-
-    @property
-    def last_screen(self) -> ArduscopeScreen:
-        """ Last screen in the buffer """
-        if self._screen_ready.isSet():
-            return self._screen_buffer[-1]
-        else:
-            raise RuntimeError("Screen not ready")
+    def measure(self) -> ArduscopeMeasure:
+        """ An ArduscopeMeasure object with measurement params and channel data"""
+        return ArduscopeMeasure(channels=self.channels, **self._measure_params)
 
     def start_acquire(self):
         """ Starts acquire in background (clearing previous state) """
@@ -419,7 +434,23 @@ class Arduscope:
             "trigger_tol": self._trigger_tol,
             "channels": self._n_channels,
             "adc_prescaler": self._adc_prescaler,
-            "pulse_width": self._pulse_width
+            "pulse_width": self._pulse_width // 2
+        }
+
+        if self._ref == "1.1":
+            if self._trigger_value > 1.1 and self._trigger_channel_code >= 0:
+                raise ValueError(f"Trigger value {self._trigger_value}V "
+                                 f"greater than maximum amplitude {self._ref}V.")
+
+        self._measure_params = {
+            "acquire_time": time.time(),
+            "frequency": self.frequency,
+            "pulse_width": self.pulse_width,
+            "trigger_value": self.trigger_value,
+            "amplitude": self.amplitude,
+            "n_channels": self.n_channels,
+            "trigger_channel": self.trigger_channel,
+            "trigger_offset": self.trigger_offset
         }
 
         typed_array = np.asarray(
@@ -437,13 +468,13 @@ class Arduscope:
 
         self._running.set()
         self._screen_ready.clear()
-        self._screen_buffer.clear()
+        self._data_buffer.clear()
         self._daemon = threading.Thread(target=self._acquire_daemon, daemon=True)
         self._daemon.start()
         self._screen_ready.wait()
 
     def clear_buffer(self):
-        self._screen_buffer.clear()
+        self._data_buffer.clear()
 
     def wait_signal(self):
         """ Stops execution until screen buffer has at least one measurement"""
@@ -461,17 +492,17 @@ class Arduscope:
 
         """
         if isinstance(n_screens, int):
-            if n_screens > self._screen_buffer.maxlen:
-                raise ValueError(f"0 < n_screens < {self._screen_buffer.maxlen}")
+            if n_screens > self._data_buffer.maxlen:
+                raise ValueError(f"0 < n_screens < {self._data_buffer.maxlen}")
         else:
-            raise TypeError(f"0 < n_screens < {self._screen_buffer.maxlen}")
+            raise TypeError(f"0 < n_screens < {self._data_buffer.maxlen}")
 
         if timeout is not None:
             if not isinstance(timeout, (int, float)):
                 raise TypeError("Timeout type: float")
 
         start = time.time()
-        current_screens = len(self._screen_buffer)
+        current_screens = len(self._data_buffer)
         if current_screens < n_screens:
             with tqdm(
                 total=n_screens,
@@ -486,7 +517,7 @@ class Arduscope:
                         if time.time() - start > timeout:
                             raise TimeoutError()
                     pb.update(current_screens - pb.n)
-                    current_screens = len(self._screen_buffer)
+                    current_screens = len(self._data_buffer)
                 pb.update(n_screens - pb.n)
 
     def stop_acquire(self):
@@ -504,7 +535,7 @@ class Arduscope:
 
     def _on_property_change(self):
         """ Handles the properties changes resetting acquisition"""
-        self._screen_buffer.clear()
+        self._data_buffer.clear()
         if self._running.isSet():
             self.stop_acquire()
             self.start_acquire()
@@ -514,18 +545,7 @@ class Arduscope:
         while self._running.isSet():
             if self._serial.inWaiting() >= BUFFER * 2 + 2:
                 channels = self._read_buffer()
-                screen = ArduscopeScreen(
-                    acquire_time=time.time(),
-                    frequency=self.frequency,
-                    pulse_width=self.pulse_width,
-                    trigger_value=self.trigger_value,
-                    amplitude=self.amplitude,
-                    n_channels=self.n_channels,
-                    trigger_channel=self.trigger_channel,
-                    trigger_offset=self.trigger_offset,
-                    channels=channels
-                )
-                self._screen_buffer.append(screen)
+                self._data_buffer.append(channels)
                 self._screen_ready.set()
 
     def _read_buffer(self) -> List[np.ndarray]:
@@ -555,8 +575,8 @@ class Arduscope:
             for i in range(self.n_channels)
         ]
 
-        for i, channel in enumerate(self.last_screen.channels):
-            curves[i].set_data(self.last_screen.x, channel)
+        for i, channel in enumerate(self._data_buffer[-1]):
+            curves[i].set_data(self.x, channel)
 
         ax.grid()
         ax.set_xlim(0, max(self.x))
@@ -601,10 +621,10 @@ class Arduscope:
             ax.set_ylabel("Voltage (V)", fontsize=14)
             ax.legend(loc=1, fontsize=14)
 
-            current_screens = len(self._screen_buffer)
+            current_screens = len(self._data_buffer)
 
             with tqdm(
-                total=self._screen_buffer.maxlen,
+                total=self._data_buffer.maxlen,
                 initial=current_screens,
                 ncols=80,
                 bar_format = "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"
@@ -613,8 +633,8 @@ class Arduscope:
                 while self._live_mode_on is True:
                     plt.pause(0.001)
                     if self._screen_ready.isSet():
-                        for i, channel in enumerate(self.last_screen.channels):
-                            curves[i].set_data(self.last_screen.x, channel)
+                        for i, channel in enumerate(self._data_buffer[-1]):
+                            curves[i].set_data(self.x, channel)
                         self._screen_ready.clear()
                     pb.update(current_screens - pb.n)
-                    current_screens = len(self._screen_buffer)
+                    current_screens = len(self._data_buffer)
