@@ -603,38 +603,44 @@ class Arduscope:
         def on_close(event):
             self._live_mode_on = False
 
-        with plt.ion():
-            self._live_mode_on = True
-            fig: plt.Figure
-            ax: plt.Axes
-            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-            fig.canvas.mpl_connect('close_event', on_close)
-            curves = [
-                ax.plot([], [], lw=2.0, label=f'Channel A{i}')[0]
-                for i in range(self.n_channels)
-            ]
+        interactive_state = plt.isinteractive()
 
-            ax.grid()
-            ax.set_xlim(0, max(self.x))
-            ax.set_ylim(0, self.amplitude)
-            ax.set_xlabel("Time (s)", fontsize=14)
-            ax.set_ylabel("Voltage (V)", fontsize=14)
-            ax.legend(loc=1, fontsize=14)
+        plt.ion()
 
-            current_screens = len(self._data_buffer)
+        self._live_mode_on = True
+        fig: plt.Figure
+        ax: plt.Axes
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        fig.canvas.mpl_connect('close_event', on_close)
+        curves = [
+            ax.plot([], [], lw=2.0, label=f'Channel A{i}')[0]
+            for i in range(self.n_channels)
+        ]
 
-            with tqdm(
-                total=self._data_buffer.maxlen,
-                initial=current_screens,
-                ncols=80,
-                bar_format = "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"
-            ) as pb:
-                pb.set_description("Live mode on. Screen buffer status")
-                while self._live_mode_on is True:
-                    plt.pause(0.001)
-                    if self._screen_ready.isSet():
-                        for i, channel in enumerate(self._data_buffer[-1]):
-                            curves[i].set_data(self.x, channel)
-                        self._screen_ready.clear()
-                    pb.update(current_screens - pb.n)
-                    current_screens = len(self._data_buffer)
+        ax.grid()
+        ax.set_xlim(0, max(self.x))
+        ax.set_ylim(0, self.amplitude)
+        ax.set_xlabel("Time (s)", fontsize=14)
+        ax.set_ylabel("Voltage (V)", fontsize=14)
+        ax.legend(loc=1, fontsize=14)
+
+        current_screens = len(self._data_buffer)
+
+        with tqdm(
+            total=self._data_buffer.maxlen,
+            initial=current_screens,
+            ncols=80,
+            bar_format = "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"
+        ) as pb:
+            pb.set_description("Live mode on. Screen buffer status")
+            while self._live_mode_on is True:
+                plt.pause(0.001)
+                if self._screen_ready.isSet():
+                    for i, channel in enumerate(self._data_buffer[-1]):
+                        curves[i].set_data(self.x, channel)
+                    self._screen_ready.clear()
+                pb.update(current_screens - pb.n)
+                current_screens = len(self._data_buffer)
+
+        if interactive_state is False:
+            plt.ioff()
