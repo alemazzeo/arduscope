@@ -8,7 +8,7 @@ Arduscopio surge como una iniciativa para facilitar la adquisición de datos en 
 Laboratorio 3 del Departamento de Física de la Facultad de Ciencias Exactas y Naturales de
 la UBA.
 
-![Screenshot](.images/arduscope_live.png)
+![Screenshot](https://raw.githubusercontent.com/alemazzeo/arduscope/main/.images/arduscope_live.png)
 
 ## Instalación
 
