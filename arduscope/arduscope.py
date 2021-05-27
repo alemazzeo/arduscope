@@ -642,13 +642,13 @@ class Arduscope:
         ) as pb:
             pb.set_description("Live mode on. Screen buffer status")
             while self._live_mode_on is True:
-                plt.pause(0.001)
+                fig.canvas.draw_idle()
+                fig.canvas.flush_events()
                 if self._screen_ready.isSet():
                     for i, channel in enumerate(self._data_buffer[-1]):
                         curves[i].set_data(self.x, channel)
                     self._screen_ready.clear()
                 pb.update(current_screens - pb.n)
                 current_screens = len(self._data_buffer)
-
         if interactive_state is False:
             plt.ioff()
