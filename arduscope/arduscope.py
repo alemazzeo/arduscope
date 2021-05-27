@@ -13,14 +13,15 @@ from collections import deque
 from dataclasses import dataclass, field, asdict
 from functools import wraps
 from tqdm import tqdm
-from typing import List, Callable, Dict
+from typing import List, Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 from serial import Serial
 
 BUFFER = 480
-MAX_FREQ = 4000
+MAX_FREQ = 32000
+REAL_MAX_FREQ = 20000
 MAX_PULSE_WIDTH = 32767
 BAUDRATE = 115200
 
@@ -442,6 +443,12 @@ class Arduscope:
                 raise ValueError(f"Trigger value {self._trigger_value}V "
                                  f"greater than maximum amplitude {self._ref}V.")
 
+        if self._freq > REAL_MAX_FREQ / self._n_channels:
+            print(f"\n*** WARNING ***"
+                  f"\nMAXIMUM RECOMMENDED FREQUENCY FOR {self._n_channels} CHANNELS "
+                  f"IS {int(REAL_MAX_FREQ / self._n_channels):d}Hz.\n"
+                  f"***\n")
+
         self._measure_params = {
             "acquire_time": time.time(),
             "frequency": self.frequency,
@@ -519,6 +526,7 @@ class Arduscope:
                     pb.update(current_screens - pb.n)
                     current_screens = len(self._data_buffer)
                 pb.update(n_screens - pb.n)
+            print()
 
     def stop_acquire(self):
         """ Stops acquire without clearing the buffer """
