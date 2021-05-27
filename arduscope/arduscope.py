@@ -52,7 +52,7 @@ class ArduscopeMeasure:
 
     x: np.ndarray = field(init=False)
     channels: List[np.ndarray] = list
-    version: str = "0.1.2"
+    version: str = "0.2.0"
 
     def __post_init__(self):
         self.acquire_time = float(self.acquire_time)
