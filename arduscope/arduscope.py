@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import calendar
-import inspect
 import json
 import os
 import pathlib
@@ -11,9 +10,8 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field, asdict
-from functools import wraps
 from tqdm import tqdm
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -537,6 +535,8 @@ class Arduscope:
                 self._running.clear()
                 self._daemon.join()
 
+        Arduscope._open_ports.pop(self._port, None)
+
     def close(self):
         self.stop_acquire()
         self._serial.close()
@@ -593,7 +593,7 @@ class Arduscope:
         ax.set_ylabel("Voltage (V)", fontsize=14)
         ax.legend(loc=1, fontsize=14)
 
-    def live_plot(self):
+    def live_plot(self, close_after: int = None):
         """ Deploy a Matplotlib window with the live state of Arduscope """
         if not self._running.isSet():
             raise RuntimeError('First call "start_acquire()"')
@@ -638,10 +638,14 @@ class Arduscope:
             total=self._data_buffer.maxlen,
             initial=current_screens,
             ncols=80,
-            bar_format = "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"
+            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}"
         ) as pb:
             pb.set_description("Live mode on. Screen buffer status")
             while self._live_mode_on is True:
+                if close_after is not None:
+                    if len(self._data_buffer) >= close_after:
+                        plt.close(fig)
+                        self._live_mode_on = False
                 fig.canvas.draw_idle()
                 fig.canvas.flush_events()
                 if self._screen_ready.isSet():
@@ -652,3 +656,5 @@ class Arduscope:
                 current_screens = len(self._data_buffer)
         if interactive_state is False:
             plt.ioff()
+
+        print("\n")
