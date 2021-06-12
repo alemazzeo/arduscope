@@ -8,6 +8,9 @@ Arduscopio surge como una iniciativa para facilitar la adquisición de datos en 
 Laboratorio 3 del Departamento de Física de la Facultad de Ciencias Exactas y Naturales de
 la UBA.
 
+A partir de la versión 0.3 el proyecto cuenta además con un generador de funciones que 
+trabaja mediante la placa de sonido y un módulo de ajuste para señales periódicas.
+
 ![Screenshot](https://raw.githubusercontent.com/alemazzeo/arduscope/main/.images/arduscope_live.png)
 
 ## Instalación
@@ -37,11 +40,11 @@ Debe ser cargado en una placa Arduino UNO (excluyente).
 **Ninguna fracción del código fue pensada para ser compatible con otra placa.**
 Cualquier funcionamiento del código fuera de Arduino UNO es mera coincidencia.
 
-## Ejemplo de uso
+## Ejemplo de uso del Arduscopio
 
 Los elementos centrales del paquete son el objeto `Arduscope` (la interfaz entre Python y
 el Arduino)
-y el objeto `ArduscopeMeasure` (un contenedor para los resultados adquiridos)
+y el objeto `ArduscopeMeasure` (un contenedor para los resultados adquiridos). 
 
 En primer lugar debemos importar estas clases del paquete que instalamos:
 
@@ -134,8 +137,8 @@ Los canales quedan almacenados en una lista y podemos recuperarlos mediante la p
 Podemos ver lo mencionado hasta acá con algunos ejemplos:
 
 ```python
-# Eje temporal de las mediciones
->> measure.x
+# Eje temporal de la medición del canal A0
+>> measure.x[0]
 # Valor del trigger
 >> measure.trigger_value
 # Canal A0, pantalla más antigua
@@ -156,8 +159,8 @@ Observando esos ejemplos podríamos hacer un gráfico muy simple del siguiente m
 
 ```python
 fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-ax.plot(measure.x, measure.channels[0].mean(axis=0), label='a0')
-ax.plot(measure.x, measure.channels[1].mean(axis=0), label='a1')
+ax.plot(measure.x[0], measure.channels[0].mean(axis=0), label='a0')
+ax.plot(measure.x[0], measure.channels[1].mean(axis=0), label='a1')
 ax.set_title(f"Valor del trigger: {measure.trigger_value}V")
 plt.show()
 ```
@@ -179,7 +182,7 @@ siguiente modo:
 measure = ArduscopeMeasure.load("data.csv")
 ```
 
-### Ejemplo completo
+### Ejemplo completo (sólo Arduscopio)
 
 ```python
 import matplotlib.pyplot as plt
@@ -216,3 +219,191 @@ measure.save("data.json")  # Formato JSON (objeto de JavaScript)
 # measure = ArduscopeMeasure.load("data.csv")
 
 ```
+
+## Ejemplo de uso del Módulo de ajuste
+
+El módulo de ajuste consiste en un método principal `fit_signal` cuya tarea es ajustar 
+funciones periódicas de la forma:
+
+`f(x, amplitud, frecuencia, fase, offset)`
+
+Cualquier función que contenga esos 4 parámetros (más la variable independiente) puede 
+ser trabajada mediante este método. Internamente realiza las siguientes tareas:
+
+  - Estima la amplitud como la diferencia entre el percentil 95 y 5 de los datos.
+    
+  - Estima el offset mediante el valor medio de la señal.
+    
+  - Estima los parámetros iniciales de frecuencia y fase por 3 métodos diferentes:
+      - Transformada rápida de Fourier (con `rfft` de `scipy.fft`)
+      - Autocorrelación de la señal (con `correlate` de `scipy.signal.signaltools`)
+      - Interpolado y búsqueda de ceros (con `UnivariateSpline` de `scipy.interpolate`).
+        
+  - Utiliza el ajuste por cuadrados mínimos `curve_fit` de la librería `scipy.optimize` 
+    para los 3 conjuntos de parámetros iniciales y selecciona de entre todos el que 
+    presenta el menor RMSE (raíz del error cuadrático medio).
+    
+Para utilizarla sólo debemos indicar la función objetivo (por ejemplo la función `sine` 
+que está definida en el propio módulo y las tiras de datos para `x` e `y`):
+
+```python
+import numpy as np
+from arduscope import fit_signal, sine
+
+# ...
+# Adquisición y almacenamiento en variables `x` e `y`
+# ...
+
+# Ajuste de la señal
+params, stds, rmse = fit_signal(sine, x, y)
+```
+
+A continuación podemos utilizar los parámetros obtenidos para generar una nueva curva:
+```python
+# Aumentamos la resolución en x 20 veces
+x_fit = np.linspace(min(x), max(x), num=x.size*20)
+# Calculamos la función de ajuste con los parámetros óptimos
+y_fit = sine(x_fit, *params)
+```
+
+## Ejemplo de uso del generador de funciones
+
+El generador de funciones hace uso intensivo del módulo `simpleaudio`. El mismo debe 
+ser instalado aparte. En Windows bastará con hacer: `pip install simpleaudio`.
+En Linux deberemos instalar además otras dependencias: 
+`sudo apt-get install -y python3-dev libasound2-dev`
+
+Este generador de funciones preparará un sonido y lo repetirá las veces que sea
+necesario. La repetición sufre una pequeña demora entre ciclos, por lo que se recomienda 
+configurar una duración mínima del sonido mayor a los tiempos de adquisición esperados.
+
+```python
+from arduscope.wave_generator import WaveGenerator
+
+# Nuevo generador de funciones
+wg = WaveGenerator(duration=20)
+```
+
+La configuración sólo puede realizarse mientras el sonido se encuentra detenido. Tenemos
+los siguientes parámetros a nuestra disposición:
+
+```python
+# Propiedades del canal 1
+wg.channel1.amplitude = 1.0     # Amplitud (0.0 a 1.0)
+wg.channel1.frequency = 440     # Frecuencia (1 a 4000 en Hz)
+wg.channel1.phase = 0           # Fase en radianes
+wg.channel1.waveform = "sine"   # "sine", "square", "triangle"
+wg.channel1.enabled = True      # Canal encendido / apagado
+
+# Propiedades del canal 2
+wg.channel2.amplitude = 1.0   
+wg.channel2.frequency = 440   
+wg.channel2.phase = 0         
+wg.channel2.waveform = "sine" 
+wg.channel2.enabled = True    
+```
+
+Cuando queramos que un sonido se ejecute abriremos un contexto y dentro del mismo
+ubicaremos las tareas a realizar. Por ejemplo, si queremos escuchar el sonido por 5
+segundos podemos hacer lo siguiente
+
+```python
+import time
+with wg.play_loop() as play:
+    for i in range(5):
+        time.sleep(1.0)
+        print(f"Transcurrieron {i+1} segundos")
+``` 
+
+### Ejemplo completo (Arduscopio + fit_signal + barrido de fase con WaveGenerator)
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from arduscope import Arduscope, fit_signal, sine
+from arduscope.wave_generator import WaveGenerator
+
+# Nuevo generador de funciones
+wg = WaveGenerator(duration=20)
+
+# Propiedades del canal 1
+wg.channel1.amplitude = 1.0     # Amplitud (0.0 a 1.0)
+wg.channel1.frequency = 440     # Frecuencia (1 a 4000 en Hz)
+wg.channel1.phase = 0           # Fase en radianes
+wg.channel1.waveform = "sine"   # "sine", "square", "triangle"
+wg.channel1.enabled = True      # Canal encendido / apagado
+
+# Propiedades del canal 2
+wg.channel2.amplitude = 1.0
+wg.channel2.frequency = 440
+wg.channel2.phase = 0
+wg.channel2.waveform = "sine"
+wg.channel2.enabled = True
+
+# Contexto para conectar / desconectar el Arduscopio
+with Arduscope(port='/dev/ttyUSB0') as arduino:
+    # Configura los parámetros del Arduscopio
+    arduino.frequency = 8000  # Frecuencia de muestreo
+    arduino.trigger_value = 2.5  # Valor de trigger
+    arduino.amplitude = 5.0  # Amplitud máxima de la señal medida
+    arduino.n_channels = 2  # Cantidad de canales
+    arduino.trigger_channel = "A0"  # Modo del trigger
+    arduino.trigger_offset = 0.0  # Offset del trigger
+
+    # Barrido de fase
+    for phase in np.linspace(0, 90, 11):
+        # Configura la fase del canal 2
+        wg.channel2.phase = phase * np.pi / 180
+
+        # Inicia la reproducción del sonido
+        with wg.play_loop() as play:
+            # Inicia la adquisición
+            arduino.start_acquire()
+            # Espera 50 pantallas
+            arduino.wait_until(50)
+            # Detiene la adquisición
+            arduino.stop_acquire()
+            # Transfiere las mediciones a un contenedor
+            measure = arduino.measure
+
+            # Grafica los canales (con el mejor ajuste disponible)
+            fig: plt.Figure
+            ax: plt.Axes
+            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+
+            phases = []
+            for i in range(arduino.n_channels):
+                # Coordenada x (con el offset correspondiente a cada canal)
+                x = measure.x[i]
+                # Coordenada y promediada en las 50 pantallas
+                y = measure.channels[i].mean(axis=0)
+
+                # Realiza un ajuste
+                params, stds, rmse, = fit_signal(sine, x, y)
+
+                # Grafica el ajuste, los datos y usa el RMSE para dibujar errores
+                x_fit = np.linspace(min(x), max(x), num=x.size*20)
+                y_fit = sine(x_fit, *params)
+                ax.plot(x, y, ls='', marker='o', color=f"C{i}")
+                ax.plot(x_fit, y_fit, color=f"C{i}")
+                ax.fill_between(x_fit, y_fit-rmse, y_fit+rmse, color=f"C{i}", alpha=0.3)
+
+                # Recuerda la fase ajustada (para posterior comparación)
+                phases.append(params[2])
+
+            # Calcula la diferencia de fase (corregida al intervalo -pi, pi)
+            phase_diff = ((phases[0] - phases[1]) - np.pi) % (2 * np.pi) - np.pi
+
+            # Imprime los resultados
+            print(f"\n"
+                  f"Expected phase: {phase:.1f}\n"
+                  f"Measured phase: {phase_diff * 180 / np.pi:.1f}")
+
+            plt.tight_layout()
+            plt.show()
+
+            # Borra el buffer antes de comenzar la siguiente medición
+            arduino.clear_buffer()
+``` 
+
+[1]: https://raw.githubusercontent.com/alemazzeo/arduscope/main/arduscope/arduscope.ino
