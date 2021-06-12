@@ -19,8 +19,8 @@ measure = arduino.measure
 
 ax: plt.Axes
 fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-ax.plot(measure.x, measure.channels[0].mean(axis=0), label='a0')
-ax.plot(measure.x, measure.channels[1].mean(axis=0), label='a1')
+ax.plot(measure.x[0], measure.channels[0].mean(axis=0), label='a0')
+ax.plot(measure.x[1], measure.channels[1].mean(axis=0), label='a1')
 ax.set_title(f"Trigger: {measure.trigger_value}V")
 
 plt.show()
