@@ -22,6 +22,8 @@ MAX_FREQ = 32000
 REAL_MAX_FREQ = 20000
 MAX_PULSE_WIDTH = 32767
 BAUDRATE = 115200
+OFFSET_TIME = 0.000054554
+
 
 ARDUINO_PARAMS = [
     "limit",
@@ -48,7 +50,7 @@ class ArduscopeMeasure:
     trigger_channel: str
     trigger_offset: float
 
-    x: np.ndarray = field(init=False)
+    x: List[np.ndarray] = field(init=False)
     channels: List[np.ndarray] = list
     version: str = "0.2.1"
 
@@ -61,8 +63,11 @@ class ArduscopeMeasure:
         self.n_channels = int(self.n_channels)
         self.trigger_channel = str(self.trigger_channel)
         self.trigger_offset = float(self.trigger_offset)
-
-        self.x = np.arange(BUFFER // self.n_channels) / self.frequency
+        base_x = np.arange(BUFFER // self.n_channels) / self.frequency
+        self.x = [
+            base_x + OFFSET_TIME * i
+            for i in range(self.n_channels)
+        ]
 
     def save(self, file: [str, os.PathLike], overwrite: bool = False):
         """ Saves a screen into a file (csv, npz or json)
@@ -114,7 +119,7 @@ class ArduscopeMeasure:
                         channel[i, :]
                         for channel in self.channels
                     ]
-                    data = np.append([self.x], screen, axis=0).T
+                    data = np.append(self.x, screen, axis=0).T
                     np.savetxt(f, data, fmt="%.9e")
                     f.write("### End of screen\n")
         else:
@@ -278,9 +283,13 @@ class Arduscope:
         return time.time() - self._uptime
 
     @property
-    def x(self) -> np.ndarray:
+    def x(self) -> List[np.ndarray]:
         """ Time-array for x axes representation """
-        return np.arange(BUFFER // self.n_channels) / self.frequency
+        base_x = np.arange(BUFFER // self.n_channels) / self.frequency
+        return [
+            base_x + OFFSET_TIME * i
+            for i in range(self._n_channels)
+        ]
 
     @property
     def channels(self) -> List[np.ndarray]:
@@ -584,10 +593,10 @@ class Arduscope:
         ]
 
         for i, channel in enumerate(self._data_buffer[-1]):
-            curves[i].set_data(self.x, channel)
+            curves[i].set_data(self.x[i], channel)
 
         ax.grid()
-        ax.set_xlim(0, max(self.x))
+        ax.set_xlim(0, max(self.x[-1]))
         ax.set_ylim(0, self.amplitude)
         ax.set_xlabel("Time (s)", fontsize=14)
         ax.set_ylabel("Voltage (V)", fontsize=14)
@@ -626,7 +635,7 @@ class Arduscope:
         ]
 
         ax.grid()
-        ax.set_xlim(0, max(self.x))
+        ax.set_xlim(0, max(self.x[-1]))
         ax.set_ylim(0, self.amplitude)
         ax.set_xlabel("Time (s)", fontsize=14)
         ax.set_ylabel("Voltage (V)", fontsize=14)
@@ -650,7 +659,7 @@ class Arduscope:
                 fig.canvas.flush_events()
                 if self._screen_ready.isSet():
                     for i, channel in enumerate(self._data_buffer[-1]):
-                        curves[i].set_data(self.x, channel)
+                        curves[i].set_data(self.x[i], channel)
                     self._screen_ready.clear()
                 pb.update(current_screens - pb.n)
                 current_screens = len(self._data_buffer)
