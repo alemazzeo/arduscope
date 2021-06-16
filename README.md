@@ -309,7 +309,7 @@ segundos podemos hacer lo siguiente
 
 ```python
 import time
-with wg.play_loop() as play:
+with wg.play():
     for i in range(5):
         time.sleep(1.0)
         print(f"Transcurrieron {i+1} segundos")
@@ -356,7 +356,7 @@ with Arduscope(port='/dev/ttyUSB0') as arduino:
         wg.channel2.phase = phase * np.pi / 180
 
         # Inicia la reproducción del sonido
-        with wg.play_loop() as play:
+        with wg.play():
             # Inicia la adquisición
             arduino.start_acquire()
             # Espera 50 pantallas

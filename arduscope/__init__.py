@@ -1,5 +1,5 @@
 from arduscope.arduscope import Arduscope, ArduscopeMeasure
-from arduscope.fit_tools import sine, fit_signal
+from arduscope.fit_tools import sine, fit_signal, UnfittableDataError
 try:
     from arduscope.wave_generator import WaveGenerator, WaveLoop
 except ModuleNotFoundError:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-import multiprocessing
 import scipy.signal
 from functools import partial
 from typing import Callable
@@ -134,6 +133,10 @@ class WaveGenerator:
         self._wave_loop = None
 
     @property
+    def duration(self) -> int:
+        return self._duration
+
+    @property
     def channel1(self) -> WaveGeneratorChannel:
         return self._channel1
 
@@ -149,7 +152,7 @@ class WaveGenerator:
         ])
         return signal
 
-    def play_loop(self) -> WaveLoop:
+    def play(self) -> WaveLoop:
         self._wave_loop = WaveLoop(
             signal=self.get_channels_signal(),
             normalize=False,
@@ -157,28 +160,12 @@ class WaveGenerator:
         )
         return self._wave_loop
 
-    def play_once(self):
-        self._wave_loop = WaveLoop(
-            signal=self.get_channels_signal(),
-            normalize=False,
-            fs=self._fs
-        )
-        self._wave_loop.play_once()
-
 
 class WaveLoop:
     def __init__(self, signal: np.ndarray, normalize: bool = False, fs: int = 44100):
         self._fs = fs
-        self._play = multiprocessing.Event()
-        self._force_stop = multiprocessing.Event()
-        self._repeat = multiprocessing.Event()
-        self._play.clear()
         self._wave_object = self._generate(signal, normalize)
         self._play_object = None
-        self._process = multiprocessing.Process(target=self._loop, daemon=True)
-
-    def is_playing(self) -> bool:
-        return self._play_object.is_playing()
 
     def _generate(self, signal: np.ndarray, normalize: bool = True) -> sa.WaveObject:
 
@@ -223,26 +210,11 @@ class WaveLoop:
 
         return wave_object
 
-    def _loop(self):
-        while self._play.is_set():
-            self._play_object = self._wave_object.play()
-            while self._play_object.is_playing() and not self._force_stop.is_set():
-                pass
-
-    def play_once(self):
-        try:
-            self._play_object = self._wave_object.play()
-            self._play_object.wait_done()
-        finally:
-            self._play_object.stop()
-
     def __enter__(self) -> WaveLoop:
-        self._play.set()
-        self._force_stop.clear()
-        self._process.start()
+        self._play_object = self._wave_object.play()
+        print("SONANDO")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._play.clear()
-        self._force_stop.set()
-        self._process.join()
+        self._play_object.stop()
+        print("SONIDO DETENIDO")

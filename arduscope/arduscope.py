@@ -432,6 +432,8 @@ class Arduscope:
 
     def start_acquire(self):
         """ Starts acquire in background (clearing previous state) """
+        if self._serial.isOpen() is False:
+            self._serial = self._open_serial()
         parameters = {
             "limit": 0,
             "frequency": self._freq,
@@ -544,11 +546,11 @@ class Arduscope:
                 self._running.clear()
                 self._daemon.join()
 
+        self._serial.close()
         Arduscope._open_ports.pop(self._port, None)
 
     def close(self):
         self.stop_acquire()
-        self._serial.close()
 
     def _on_property_change(self):
         """ Handles the properties changes resetting acquisition"""
